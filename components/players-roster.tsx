@@ -184,15 +184,15 @@ export function PlayersRoster({
                 <div className="fc-stats-grid">
                   <div className="fc-stat-item">
                     <small>JOGOS</small>
-                    <b>{p.games}</b>
+                    <b>{p.games ?? '—'}</b>
                   </div>
                   <div className="fc-stat-item">
                     <small>GOLS</small>
-                    <b>{p.available.goals ? p.goals : '—'}</b>
+                    <b>{p.available?.goals ? p.goals ?? '—' : '—'}</b>
                   </div>
                   <div className="fc-stat-item">
                     <small>ASSIST</small>
-                    <b>{p.available.assists ? p.assists : '—'}</b>
+                    <b>{p.available?.assists ? p.assists ?? '—' : '—'}</b>
                   </div>
                   <div className="fc-stat-item">
                     <small>PASSES</small>
@@ -301,14 +301,14 @@ export function PlayersRoster({
                     </td>
                     <td>{p.games}</td>
                     <td>
-                      {!p.available.goals ? '—' : p.goals > 0 ? (
+                      {!p.available?.goals ? '—' : (p.goals ?? 0) > 0 ? (
                         <span className="stat-highlight goal">{p.goals}</span>
                       ) : (
                         '0'
                       )}
                     </td>
                     <td>
-                      {!p.available.assists ? '—' : p.assists > 0 ? (
+                      {!p.available?.assists ? '—' : (p.assists ?? 0) > 0 ? (
                         <span className="stat-highlight assist">{p.assists}</span>
                       ) : (
                         '0'

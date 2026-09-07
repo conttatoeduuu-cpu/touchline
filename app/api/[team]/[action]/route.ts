@@ -1,4 +1,4 @@
-import { analyzeWithGemini } from '@/lib/scouting-ai';
+import { analyzeTeamWithGemini, analyzeWithGemini } from '@/lib/scouting-ai';
 import { isTeam, parseEA, type Match } from '@/lib/domain';
 import {
   media,
@@ -445,6 +445,48 @@ export async function POST(request: Request, ctx: Context) {
       await audit(team, 'analyze', recordId);
       return json({ ok: true });
     }
+    if (action === 'analyze-team') {
+      const geminiKey = s.config.geminiKey;
+      if (!geminiKey)
+        throw new AppError('Configure a chave Gemini em Administração.');
+      const friendlyMatches = (await allMatches(team))
+        .filter((match) => match.type === 'friendlyMatch' && !match.excluded)
+        .slice(0, 30);
+      if (!friendlyMatches.length)
+        throw new AppError('Ainda não há amistosos para analisar.', 400);
+      const evidence = friendlyMatches.map((match) => ({
+        id: match.id,
+        playedAt: match.playedAt,
+        opponent: match.opponent,
+        goalsFor: match.goalsFor,
+        goalsAgainst: match.goalsAgainst,
+        type: 'friendlyMatch',
+        players: match.players.map((player) => ({ ...player, raw: undefined })),
+      }));
+      const report = await analyzeTeamWithGemini(
+        geminiKey,
+        s.config.geminiModel ?? 'gemini-3.5-flash',
+        evidence,
+      );
+      const id = `team-analysis:${team}`;
+      const at = new Date().toISOString();
+      const data = {
+        name: 'Análise assistida do time',
+        scope: 'team-analysis',
+        analysis: report,
+        sampleSize: friendlyMatches.length,
+        model: s.config.geminiModel ?? 'gemini-3.5-flash',
+        at,
+      };
+      await db()
+        .prepare(
+          "INSERT INTO records (id,team,kind,data,createdAt) VALUES (?,?,?,?,?) ON CONFLICT(team,id) DO UPDATE SET data=excluded.data,createdAt=excluded.createdAt WHERE records.kind='note'",
+        )
+        .bind(id, team, 'note', JSON.stringify(data), at)
+        .run();
+      await audit(team, 'analyze-team', `${friendlyMatches.length} amistosos`);
+      return json({ ok: true, report });
+    }
     if (action === 'password') {
       if (
         typeof b.password !== 'string' ||
@@ -511,13 +553,17 @@ export async function POST(request: Request, ctx: Context) {
         platform: s.config.platform,
         clubIds: id,
         matchType: 'friendlyMatch',
-        maxResultCount: '20',
+        maxResultCount: '100',
       });
       if (!Array.isArray(raw))
         throw new AppError('Clube não retornou amistosos.', 502);
       const matches = raw
         .map((m) => parseEA(m, id, 'friendlyMatch'))
-        .filter((m) => m?.type === 'friendlyMatch');
+        .filter((m) => m?.type === 'friendlyMatch')
+        .filter(
+          (m, index, list) =>
+            list.findIndex((candidate) => candidate?.id === m?.id) === index,
+        );
       const wins = matches.filter((m) => m!.goalsFor > m!.goalsAgainst).length;
       const data = {
         name: text(b.name) || `Clube ${id}`,

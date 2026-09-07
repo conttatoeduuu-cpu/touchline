@@ -3,11 +3,8 @@
 import { useMemo, useState } from 'react';
 import {
   Camera,
-  ChevronRight,
-  ClipboardCheck,
   Search,
   Star,
-  Trash2,
   X,
 } from 'lucide-react';
 import type { Match, RecordItem } from '@/lib/domain';
@@ -87,7 +84,7 @@ function fitDimensions(player: any, baselines: Map<Group, any>): Dimension[] {
       score: production,
       detail: player.seconds
         ? `${(per90(player.goals + player.assists, player.seconds) ?? 0).toFixed(2)} participações/90 vs. ${base?.production?.toFixed(2) ?? '—'}`
-        : 'Sem minutos para taxa por 90',
+        : 'Minutos não registrados pela fonte',
       weight: w[1],
     },
     {
@@ -95,7 +92,7 @@ function fitDimensions(player: any, baselines: Map<Group, any>): Dimension[] {
       score: defending,
       detail: player.seconds
         ? `${(per90(player.tackles, player.seconds) ?? 0).toFixed(2)} desarmes/90 vs. ${base?.defending?.toFixed(2) ?? '—'}`
-        : 'Sem minutos para taxa por 90',
+        : 'Minutos não registrados pela fonte',
       weight: w[2],
     },
   ];
@@ -109,12 +106,167 @@ function fitScore(dimensions: Dimension[], ratings: number) {
   return Math.round(50 + (raw - 50) * reliability);
 }
 
+function RadarChart({ player, baselines }: { player: any; baselines: Map<Group, any> }) {
+  const base = baselines.get(player.group);
+  const axes = [
+    { label: 'Gols/90', val: per90(player.goals, player.seconds) ?? 0, base: base?.goals90 ?? 0 },
+    { label: 'Ast/90', val: per90(player.assists, player.seconds) ?? 0, base: base?.assists90 ?? 0 },
+    { label: 'Chu/90', val: per90(player.shots, player.seconds) ?? 0, base: base?.shots90 ?? 0 },
+    { label: 'Pas/90', val: per90(player.passes, player.seconds) ?? 0, base: base?.passes90 ?? 0 },
+    { label: 'Des/90', val: per90(player.tackles, player.seconds) ?? 0, base: base?.tackles90 ?? 0 },
+  ];
+  
+  const size = 200;
+  const center = size / 2;
+  const radius = size / 2 - 25;
+  
+  const getPoint = (val: number, max: number, index: number, total: number) => {
+    const rRatio = max > 0 ? Math.min(val / (max * 2 || 1), 1) : (val > 0 ? 1 : 0);
+    const angle = (Math.PI * 2 * index) / total - Math.PI / 2;
+    return {
+      x: center + radius * rRatio * Math.cos(angle),
+      y: center + radius * rRatio * Math.sin(angle),
+    };
+  };
+
+  const getBasePoint = (index: number, total: number) => {
+    const rRatio = 0.5; // baseline is always at 50%
+    const angle = (Math.PI * 2 * index) / total - Math.PI / 2;
+    return {
+      x: center + radius * rRatio * Math.cos(angle),
+      y: center + radius * rRatio * Math.sin(angle),
+    };
+  };
+  
+  const getLabelPoint = (index: number, total: number) => {
+    const rRatio = 1.25;
+    const angle = (Math.PI * 2 * index) / total - Math.PI / 2;
+    return {
+      x: center + radius * rRatio * Math.cos(angle),
+      y: center + radius * rRatio * Math.sin(angle),
+    };
+  };
+
+  const polyBase = axes.map((_, i) => {
+    const pt = getBasePoint(i, axes.length);
+    return `${pt.x},${pt.y}`;
+  }).join(' ');
+
+  const polyPlayer = axes.map((ax, i) => {
+    const pt = getPoint(ax.val, ax.base, i, axes.length);
+    return `${pt.x},${pt.y}`;
+  }).join(' ');
+
+  return (
+    <svg width="100%" viewBox={`0 0 ${size} ${size}`} style={{ overflow: 'visible', maxWidth: '240px', display: 'block', margin: '0 auto' }}>
+      <circle cx={center} cy={center} r={radius} fill="none" stroke="var(--line)" strokeDasharray="2 2" />
+      <circle cx={center} cy={center} r={radius * 0.5} fill="none" stroke="var(--line)" strokeDasharray="2 2" />
+      
+      {axes.map((_, i) => {
+        const _pt = getLabelPoint(i, axes.length);
+        const linePt = {
+           x: center + radius * Math.cos((Math.PI * 2 * i) / axes.length - Math.PI / 2),
+           y: center + radius * Math.sin((Math.PI * 2 * i) / axes.length - Math.PI / 2)
+        };
+        return <line key={`l-${i}`} x1={center} y1={center} x2={linePt.x} y2={linePt.y} stroke="var(--line)" />;
+      })}
+      
+      <polygon points={polyBase} fill="var(--muted)" opacity="0.2" stroke="var(--muted)" strokeWidth="1" />
+      
+      <polygon points={polyPlayer} fill="var(--accent)" opacity="0.4" />
+      <polygon points={polyPlayer} fill="none" stroke="var(--accent)" strokeWidth="2" />
+      
+      {axes.map((ax, i) => {
+        const pt = getLabelPoint(i, axes.length);
+        return (
+          <text key={`t-${i}`} x={pt.x} y={pt.y} fill="var(--text)" fontSize="11" fontWeight="600" textAnchor="middle" dominantBaseline="middle">
+            {ax.label}
+          </text>
+        );
+      })}
+    </svg>
+  );
+}
+
+function ComparisonBars({ player, baselines }: { player: any; baselines: Map<Group, any> }) {
+  const base = baselines.get(player.group);
+  const stats = [
+    { label: 'Gols/90', val: per90(player.goals, player.seconds) ?? 0, base: base?.goals90 ?? 0 },
+    { label: 'Assist/90', val: per90(player.assists, player.seconds) ?? 0, base: base?.assists90 ?? 0 },
+    { label: 'Chutes/90', val: per90(player.shots, player.seconds) ?? 0, base: base?.shots90 ?? 0 },
+    { label: 'Passes/90', val: per90(player.passes, player.seconds) ?? 0, base: base?.passes90 ?? 0 },
+    { label: 'Desarmes/90', val: per90(player.tackles, player.seconds) ?? 0, base: base?.tackles90 ?? 0 },
+  ];
+
+  return (
+    <div className="talent-comparison-bars" style={{ display: 'flex', flexDirection: 'column', gap: '12px', width: '100%' }}>
+      {stats.map(s => {
+        const diff = s.val - s.base;
+        const max = Math.max(s.val, s.base, 0.1);
+        const pWidth = (s.val / max) * 100;
+        const bWidth = (s.base / max) * 100;
+        const isAbove = diff >= 0;
+        
+        return (
+          <div key={s.label} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
+              <span>{s.label}</span>
+              <span style={{ color: isAbove ? 'var(--green, #22c55e)' : 'var(--red, #ef4444)' }}>
+                {isAbove ? 'Acima da média' : 'Abaixo da média'}
+              </span>
+            </div>
+            <div style={{ position: 'relative', height: '16px', background: 'var(--line)', borderRadius: '4px', overflow: 'hidden' }}>
+              <div style={{ position: 'absolute', top: 0, left: 0, height: '8px', width: `${bWidth}%`, background: 'var(--muted)', opacity: 0.5 }} />
+              <div style={{ position: 'absolute', top: '8px', left: 0, height: '8px', width: `${pWidth}%`, background: 'var(--accent)' }} />
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--muted)' }}>
+              <span>Atleta: {s.val.toFixed(2)}</span>
+              <span>Média: {s.base.toFixed(2)}</span>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function Sparkline({ appearances }: { appearances: any[] }) {
+  const valid = appearances.filter(a => a.line.rating != null).sort((a,b) => a.match.playedAt.localeCompare(b.match.playedAt)).slice(-8);
+  if (valid.length < 2) return <div style={{ fontSize: '11px', color: 'var(--muted)' }}>Aguardando dados</div>;
+  
+  const min = Math.min(...valid.map(a => a.line.rating));
+  const max = Math.max(...valid.map(a => a.line.rating));
+  const range = max - min || 1;
+  const h = 60;
+  const w = 120;
+  const gap = w / (valid.length - 1);
+  
+  const pts = valid.map((a, i) => {
+    const x = i * gap;
+    const y = h - ((a.line.rating - min) / range) * (h - 10) - 5;
+    return `${x},${y}`;
+  }).join(' ');
+
+  return (
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} style={{ overflow: 'visible' }}>
+      <polyline points={pts} fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinejoin="round" />
+      {valid.map((a, i) => {
+        const x = i * gap;
+        const y = h - ((a.line.rating - min) / range) * (h - 10) - 5;
+        return (
+          <circle key={i} cx={x} cy={y} r="3" fill="var(--accent)" />
+        );
+      })}
+    </svg>
+  );
+}
+
 export function MarketWatchlist({
   matches,
   records,
   admin,
   saveRecord,
-  removeRecord,
+  removeRecord: _removeRecord,
 }: Props) {
   const [query, setQuery] = useState('');
   const [position, setPosition] = useState('all');
@@ -128,6 +280,7 @@ export function MarketWatchlist({
   const [positionOverride, setPositionOverride] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  
   const friendlies = useMemo(
     () => matches.filter((m) => !m.excluded && m.type === 'friendlyMatch'),
     [matches],
@@ -149,11 +302,21 @@ export function MarketWatchlist({
           goals: 0,
           assists: 0,
           tackles: 0,
+          shots: 0,
+          passes: 0,
+          passAttempts: 0,
+          saves: 0,
+          redCards: 0,
           seconds: 0,
         };
         x.goals += p.goals ?? 0;
         x.assists += p.assists ?? 0;
         x.tackles += p.tackles ?? 0;
+        x.shots += p.shots ?? 0;
+        x.passes += p.passes ?? 0;
+        x.passAttempts += p.passAttempts ?? 0;
+        x.saves += p.saves ?? 0;
+        x.redCards += p.redCards ?? 0;
         x.seconds += p.seconds ?? 0;
         if (p.rating != null) {
           x.sum += p.rating;
@@ -184,6 +347,11 @@ export function MarketWatchlist({
           ? timed.reduce((n, x) => n + (per90(x.tackles, x.seconds) ?? 0), 0) /
             timed.length
           : null,
+        goals90: timed.length ? timed.reduce((n, x) => n + (per90(x.goals, x.seconds) ?? 0), 0) / timed.length : null,
+        assists90: timed.length ? timed.reduce((n, x) => n + (per90(x.assists, x.seconds) ?? 0), 0) / timed.length : null,
+        shots90: timed.length ? timed.reduce((n, x) => n + (per90(x.shots, x.seconds) ?? 0), 0) / timed.length : null,
+        passes90: timed.length ? timed.reduce((n, x) => n + (per90(x.passes, x.seconds) ?? 0), 0) / timed.length : null,
+        tackles90: timed.length ? timed.reduce((n, x) => n + (per90(x.tackles, x.seconds) ?? 0), 0) / timed.length : null,
       });
     }
     return result;
@@ -202,6 +370,10 @@ export function MarketWatchlist({
           goals: 0,
           assists: 0,
           tackles: 0,
+          shots: 0,
+          passes: 0,
+          passAttempts: 0,
+          saves: 0,
           seconds: 0,
           sum: 0,
           ratings: 0,
@@ -213,6 +385,10 @@ export function MarketWatchlist({
         x.goals += p.goals ?? 0;
         x.assists += p.assists ?? 0;
         x.tackles += p.tackles ?? 0;
+        x.shots += p.shots ?? 0;
+        x.passes += p.passes ?? 0;
+        x.passAttempts += p.passAttempts ?? 0;
+        x.saves += p.saves ?? 0;
         x.seconds += p.seconds ?? 0;
         if (p.rating != null) {
           x.sum += p.rating;
@@ -296,6 +472,14 @@ export function MarketWatchlist({
       setBusy(false);
     }
   }
+
+  const getStatusColor = (status: string) => {
+    if (status === 'Em observação') return 'blue';
+    if (status === 'Contato sugerido') return 'green';
+    if (status === 'Descartado') return 'red';
+    return 'gray';
+  };
+
   return (
     <div className="market-container">
       <div className="scouting-header-box">
@@ -342,262 +526,228 @@ export function MarketWatchlist({
           <option>Descartado</option>
         </select>
       </div>
-      <div className="overview-grid" style={{ minWidth: 0 }}>
-        <section className="panel" style={{ minWidth: 0, overflow: 'hidden' }}>
-          <header>
+      <div className="overview-grid" style={{ minWidth: 0, display: 'flex', gap: '20px', alignItems: 'flex-start' }}>
+        
+        {/* LEFT PANEL - RANKING */}
+        <section className="panel" style={{ flex: '0 0 380px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <header style={{ paddingBottom: '12px', borderBottom: '1px solid var(--line)' }}>
             <h2>Ranking de encaixe</h2>
             <span className="muted">
               {filtered.length} atletas · {friendlies.length} amistosos
             </span>
           </header>
           {filtered.length ? (
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Jogador</th>
-                    <th>Pos.</th>
-                    <th>Encaixe</th>
-                    <th>Amostra</th>
-                    <th>Nota</th>
-                    <th>Confiança</th>
-                    <th>Status</th>
-                    <th aria-label="Ações" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.map((p) => (
-                    <tr
-                      key={p.id}
-                      className={selected?.id === p.id ? 'active' : ''}
-                    >
-                      <td>
-                        <button
-                          className="player-name"
-                          onClick={() => setSelectedId(p.id)}
-                        >
-                          {p.target?.data.photo ? (
-                            <span className="avatar-small">
-                              <img src={p.target.data.photo} alt="" />
-                            </span>
-                          ) : (
-                            <span className="avatar-small">
-                              {p.name.slice(0, 2).toUpperCase()}
-                            </span>
-                          )}
-                          <b>{p.name}</b>
-                        </button>
-                      </td>
-                      <td>{p.displayPosition}</td>
-                      <td>
-                        <b>{p.fit === null ? 'Sem base' : `${p.fit}/100`}</b>
-                      </td>
-                      <td>
-                        {p.games} · {p.ratings} notas
-                      </td>
-                      <td>
-                        {p.mean === null
-                          ? '—'
-                          : p.mean.toLocaleString('pt-BR', {
-                              maximumFractionDigits: 1,
-                            })}
-                      </td>
-                      <td>
-                        <span className="tag">{p.confidence}</span>
-                      </td>
-                      <td>{p.target?.data.status || 'Radar'}</td>
-                      <td>
-                        <button
-                          className="icon-button"
-                          aria-label={`Abrir ${p.name}`}
-                          onClick={() => setSelectedId(p.id)}
-                        >
-                          <ChevronRight size={15} />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {filtered.map((p) => (
+                <button
+                  key={p.id}
+                  className={`talent-card ${selected?.id === p.id ? 'selected' : ''}`}
+                  onClick={() => setSelectedId(p.id)}
+                  style={{
+                    textAlign: 'left',
+                    background: selected?.id === p.id ? 'var(--panel-hover, rgba(255,255,255,0.05))' : 'var(--panel)',
+                    padding: '16px',
+                    borderRadius: '8px',
+                    border: `1px solid ${selected?.id === p.id ? 'var(--accent)' : 'var(--line)'}`,
+                    cursor: 'pointer',
+                    transition: 'border-color 0.2s',
+                    width: '100%',
+                    display: 'block'
+                  }}
+                >
+                  <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                    {p.target?.data.photo ? (
+                      <img src={p.target.data.photo} alt="" style={{ width: 44, height: 44, borderRadius: '50%', objectFit: 'cover' }} />
+                    ) : (
+                      <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'var(--line)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>
+                        {p.name.slice(0, 2).toUpperCase()}
+                      </div>
+                    )}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+                        <h3 style={{ margin: 0, fontSize: '1rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</h3>
+                        <span className={`status-pill ${getStatusColor(p.target?.data.status)}`} style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', whiteSpace: 'nowrap' }}>
+                          {p.target?.data.status || 'Radar'}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        <b>{p.displayPosition}</b> · {p.clubs.join(', ')}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div style={{ marginTop: '16px', display: 'flex', gap: '12px', alignItems: 'center' }}>
+                    <div className="talent-fit-bar" style={{ flex: 1, height: '6px', background: 'var(--line)', borderRadius: '3px', overflow: 'hidden' }}>
+                      <div className="fit-fill" style={{ width: `${p.fit ?? 0}%`, height: '100%', background: (p.fit ?? 0) > 70 ? 'var(--green, #22c55e)' : (p.fit ?? 0) >= 40 ? 'var(--yellow, #eab308)' : 'var(--red, #ef4444)' }} />
+                    </div>
+                    <span style={{ fontSize: '12px', fontWeight: 'bold', width: '28px', textAlign: 'right' }}>
+                      {p.fit === null ? 'N/R' : p.fit}
+                    </span>
+                  </div>
+                  
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '12px', fontSize: '12px', color: 'var(--muted)' }}>
+                    <span>{p.games}J</span>
+                    <span>{p.goals}G {p.assists}A</span>
+                    <span>★ {p.mean === null ? 'N/R' : p.mean.toFixed(1)}</span>
+                    <div className="confidence-dots" style={{ display: 'flex', gap: '3px' }}>
+                      <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: p.confidence === 'Alta' || p.confidence === 'Média' || p.confidence === 'Baixa' ? 'currentColor' : 'var(--line)' }} />
+                      <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: p.confidence === 'Alta' || p.confidence === 'Média' ? 'currentColor' : 'var(--line)' }} />
+                      <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: p.confidence === 'Alta' ? 'currentColor' : 'var(--line)' }} />
+                    </div>
+                  </div>
+                </button>
+              ))}
             </div>
           ) : (
             <div className="empty">
               <Search size={24} />
               <h3>Nenhum talento encontrado</h3>
-              <p>
-                Este módulo considera apenas amistosos com estatísticas
-                adversárias.
-              </p>
+              <p>Este módulo considera apenas amistosos com estatísticas adversárias.</p>
             </div>
           )}
         </section>
-        <aside className="panel" style={{ minWidth: 0, overflow: 'hidden' }}>
+
+        {/* RIGHT PANEL - DETAIL */}
+        <aside className="panel" style={{ flex: 1, minWidth: 0 }}>
           {selected ? (
-            <>
-              <header>
-                <div style={{ minWidth: 0 }}>
-                  <h2 style={{ overflowWrap: 'anywhere' }}>{selected.name}</h2>
-                  <small style={{ display: 'block', overflowWrap: 'anywhere' }}>
-                    {selected.clubs.join(', ')} · visto em{' '}
-                    {date(selected.lastSeen)}
-                  </small>
-                </div>
-                {selected.target && admin && (
-                  <button
-                    className="icon-button"
-                    aria-label={`Remover ${selected.name}`}
-                    onClick={() => void removeRecord(selected.target)}
-                  >
-                    <Trash2 size={16} />
-                  </button>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '32px', paddingBottom: '24px' }}>
+              
+              {/* 1. Header */}
+              <header style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
+                {selected.target?.data.photo ? (
+                  <img src={selected.target.data.photo} alt="" style={{ width: 80, height: 80, borderRadius: '50%', objectFit: 'cover' }} />
+                ) : (
+                  <div style={{ width: 80, height: 80, borderRadius: '50%', background: 'var(--line)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '28px', fontWeight: 'bold' }}>
+                    {selected.name.slice(0, 2).toUpperCase()}
+                  </div>
                 )}
+                <div style={{ flex: 1 }}>
+                  <h2 style={{ fontSize: '24px', margin: '0 0 4px 0' }}>{selected.name}</h2>
+                  <div style={{ fontSize: '15px', color: 'var(--muted)' }}>
+                    <b>{selected.displayPosition}</b> · {selected.clubs.join(', ')}
+                  </div>
+                  <div style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '6px' }}>
+                    Visto pela última vez em {date(selected.lastSeen)}
+                  </div>
+                </div>
               </header>
-              <div className="panel-body">
-                <div
-                  style={{
-                    display: 'flex',
-                    gap: 16,
-                    alignItems: 'center',
-                    minWidth: 0,
-                  }}
-                >
-                  {selected.target?.data.photo ? (
-                    <span
-                      className="player-avatar"
-                      style={{ overflow: 'hidden' }}
-                    >
-                      <img
-                        src={selected.target.data.photo}
-                        alt={`Foto de ${selected.name}`}
-                        style={{
-                          width: '100%',
-                          height: '100%',
-                          objectFit: 'cover',
-                        }}
-                      />
+
+              {/* 2. Fit Score Card & Pipeline controls */}
+              <div style={{ display: 'flex', gap: '24px', background: 'var(--panel)', padding: '20px', borderRadius: '8px', border: '1px solid var(--line)' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', paddingRight: '24px', borderRight: '1px solid var(--line)', minWidth: '120px' }}>
+                  <div style={{ fontSize: '42px', fontWeight: 'bold', color: selected.fit === null ? 'var(--muted)' : selected.fit > 70 ? 'var(--green, #22c55e)' : selected.fit >= 40 ? 'var(--yellow, #eab308)' : 'var(--red, #ef4444)', lineHeight: 1 }}>
+                    {selected.fit === null ? 'N/R' : selected.fit}
+                  </div>
+                  <div style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '8px' }}>Score de Encaixe</div>
+                  <div style={{ fontSize: '11px', marginTop: '6px' }}>Confiança: <b>{selected.confidence}</b></div>
+                </div>
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span className="muted">Status de Pipeline</span>
+                    <span className={`status-pill ${getStatusColor(selected.target?.data.status)}`} style={{ fontSize: '13px', padding: '4px 10px', borderRadius: '12px' }}>
+                      {selected.target?.data.status || 'Radar'}
                     </span>
-                  ) : (
-                    <span className="player-avatar">
-                      {selected.name.slice(0, 2).toUpperCase()}
-                    </span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span className="muted">Nível de Prioridade</span>
+                    <b style={{ fontSize: '14px' }}>{selected.target?.data.priority || 'Não definida'}</b>
+                  </div>
+                  {admin && (
+                    <button className="button primary" style={{ marginTop: 'auto', padding: '8px', alignSelf: 'flex-start' }} onClick={() => edit(selected)}>
+                      <Star size={15} /> {selected.target ? 'Editar pipeline e perfil' : 'Adicionar ao pipeline'}
+                    </button>
                   )}
-                  <div style={{ minWidth: 0 }}>
-                    <b>{selected.displayPosition}</b>
-                    <small
-                      style={{ display: 'block', overflowWrap: 'anywhere' }}
-                    >
-                      Automática EA: {autoPosition(selected.automaticPosition)}{' '}
-                      ({selected.automaticPosition || 'sem código'})
-                    </small>
+                </div>
+              </div>
+
+              {/* 3. Radar & 6. Comparisons */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '32px' }}>
+                <div className="talent-radar" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', background: 'var(--panel)', padding: '20px', borderRadius: '8px', border: '1px solid var(--line)' }}>
+                  <h3 style={{ margin: '0 0 16px 0', fontSize: '14px' }}>Perfil de Produção vs {selected.group}</h3>
+                  <RadarChart player={selected} baselines={ownBaselines} />
+                </div>
+                
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', background: 'var(--panel)', padding: '20px', borderRadius: '8px', border: '1px solid var(--line)' }}>
+                  <h3 style={{ margin: 0, fontSize: '14px' }}>Comparação de Baseline (Posição)</h3>
+                  <ComparisonBars player={selected} baselines={ownBaselines} />
+                </div>
+              </div>
+
+              {/* 4. Stats Grid */}
+              <div>
+                <h3 style={{ margin: '0 0 12px 0' }}>Estatísticas Gerais (Amistosos)</h3>
+                <div className="talent-stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '16px' }}>
+                  <div style={{ background: 'var(--panel)', border: '1px solid var(--line)', borderRadius: '6px', padding: '16px', display: 'flex', flexDirection: 'column' }}>
+                    <span style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: '8px' }}>Jogos / Minutos</span>
+                    <span style={{ fontSize: '24px', fontWeight: 'bold' }}>{selected.games}</span>
+                    <span style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '4px' }}>{Math.floor(selected.seconds / 60)}' jogados</span>
+                  </div>
+                  
+                  <div style={{ background: 'var(--panel)', border: '1px solid var(--line)', borderRadius: '6px', padding: '16px', display: 'flex', flexDirection: 'column' }}>
+                    <span style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: '8px' }}>Gols</span>
+                    <span style={{ fontSize: '24px', fontWeight: 'bold' }}>{selected.goals}</span>
+                    <span style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '4px' }}>{((per90(selected.goals, selected.seconds) ?? 0)).toFixed(2)}/90</span>
+                    <span style={{ fontSize: '11px', marginTop: '6px', color: 'var(--accent)' }}>Taxa conv: {selected.shots > 0 ? Math.round((selected.goals/selected.shots)*100) : 0}%</span>
+                  </div>
+
+                  <div style={{ background: 'var(--panel)', border: '1px solid var(--line)', borderRadius: '6px', padding: '16px', display: 'flex', flexDirection: 'column' }}>
+                    <span style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: '8px' }}>Assistências</span>
+                    <span style={{ fontSize: '24px', fontWeight: 'bold' }}>{selected.assists}</span>
+                    <span style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '4px' }}>{((per90(selected.assists, selected.seconds) ?? 0)).toFixed(2)}/90</span>
+                  </div>
+
+                  <div style={{ background: 'var(--panel)', border: '1px solid var(--line)', borderRadius: '6px', padding: '16px', display: 'flex', flexDirection: 'column' }}>
+                    <span style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: '8px' }}>Chutes</span>
+                    <span style={{ fontSize: '24px', fontWeight: 'bold' }}>{selected.shots}</span>
+                    <span style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '4px' }}>{((per90(selected.shots, selected.seconds) ?? 0)).toFixed(2)}/90</span>
+                  </div>
+
+                  <div style={{ background: 'var(--panel)', border: '1px solid var(--line)', borderRadius: '6px', padding: '16px', display: 'flex', flexDirection: 'column' }}>
+                    <span style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: '8px' }}>Desarmes</span>
+                    <span style={{ fontSize: '24px', fontWeight: 'bold' }}>{selected.tackles}</span>
+                    <span style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '4px' }}>{((per90(selected.tackles, selected.seconds) ?? 0)).toFixed(2)}/90</span>
+                  </div>
+
+                  <div style={{ background: 'var(--panel)', border: '1px solid var(--line)', borderRadius: '6px', padding: '16px', display: 'flex', flexDirection: 'column' }}>
+                    <span style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: '8px' }}>Passes</span>
+                    <span style={{ fontSize: '24px', fontWeight: 'bold' }}>{selected.passes}</span>
+                    <span style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '4px' }}>{((per90(selected.passes, selected.seconds) ?? 0)).toFixed(2)}/90</span>
+                    <span style={{ fontSize: '11px', marginTop: '6px', color: 'var(--accent)' }}>Precisão: {selected.passAttempts > 0 ? Math.round((selected.passes/selected.passAttempts)*100) : 0}%</span>
                   </div>
                 </div>
               </div>
-              <div className="metrics">
-                <div className="metric">
-                  <span>Fit score</span>
-                  <strong>{selected.fit === null ? '—' : selected.fit}</strong>
-                  <small>0–100, ajustado pela amostra</small>
+
+              {/* 5. Rating Sparkline & 7. Recent Appearances */}
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                  <h3 style={{ margin: 0 }}>Últimas Atuações (até 8 jogos)</h3>
+                  <div className="talent-sparkline" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                    <span style={{ fontSize: '11px', color: 'var(--muted)', marginBottom: '4px' }}>Tendência de Nota</span>
+                    <Sparkline appearances={selected.appearances} />
+                  </div>
                 </div>
-                <div className="metric">
-                  <span>Amistosos</span>
-                  <strong>{selected.games}</strong>
-                  <small>{selected.ratings} com nota</small>
-                </div>
-                <div className="metric">
-                  <span>Participações</span>
-                  <strong>{selected.goals + selected.assists}</strong>
-                  <small>
-                    {selected.goals} gols · {selected.assists} assist.
-                  </small>
-                </div>
-              </div>
-              <div className="panel-body">
-                <h3>Como o encaixe foi calculado</h3>
-                {selected.dimensions.map((d: Dimension) => (
-                  <div
-                    className="list-row"
-                    key={d.label}
-                    style={{ paddingInline: 0 }}
-                  >
-                    <div style={{ minWidth: 0 }}>
-                      <b>{d.label}</b>
-                      <small
-                        style={{
-                          whiteSpace: 'normal',
-                          overflowWrap: 'anywhere',
-                        }}
-                      >
-                        {d.detail} · peso {Math.round(d.weight * 100)}%
-                      </small>
+                
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {selected.appearances.sort((a: any, b: any) => b.match.playedAt.localeCompare(a.match.playedAt)).slice(0, 8).map((a: any) => (
+                    <div className="talent-appearance" key={a.match.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 16px', background: 'var(--panel)', borderRadius: '6px', border: '1px solid var(--line)', alignItems: 'center' }}>
+                      <div>
+                        <div style={{ fontSize: '14px', fontWeight: 'bold' }}>vs {a.match.opponent}</div>
+                        <div style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '2px' }}>{date(a.match.playedAt)}</div>
+                      </div>
+                      <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+                        <div style={{ fontSize: '13px', color: 'var(--muted)' }}>
+                          {a.line.goals ?? 0}G · {a.line.assists ?? 0}A
+                        </div>
+                        <div style={{ padding: '6px 12px', background: 'var(--line)', borderRadius: '4px', fontWeight: 'bold', fontSize: '13px', color: a.line.rating ? (a.line.rating >= 7 ? 'var(--green, #22c55e)' : a.line.rating >= 6 ? 'var(--yellow, #eab308)' : 'var(--red, #ef4444)') : 'inherit' }}>
+                          {a.line.rating ? a.line.rating.toFixed(1) : 'N/R'}
+                        </div>
+                      </div>
                     </div>
-                    <strong>
-                      {d.score === null ? 'Sem dado' : Math.round(d.score)}
-                    </strong>
-                  </div>
-                ))}
-                <p className="muted">
-                  As dimensões disponíveis são reponderadas. A confiança
-                  aproxima o resultado de 50 até completar cinco atuações com
-                  nota.
-                </p>
-              </div>
-              {selected.target && (
-                <div className="ai-analysis-pro">
-                  <div className="ai-header">
-                    <ClipboardCheck size={16} />
-                    <b>
-                      {selected.target.data.status} · prioridade{' '}
-                      {selected.target.data.priority || 'não definida'}
-                    </b>
-                  </div>
-                  <p style={{ overflowWrap: 'anywhere' }}>
-                    {selected.target.data.notes || 'Sem notas da diretoria.'}
-                  </p>
-                </div>
-              )}
-              {admin && (
-                <button
-                  className="button primary"
-                  style={{ margin: 20 }}
-                  onClick={() => edit(selected)}
-                >
-                  <Star size={15} />
-                  {selected.target
-                    ? 'Editar perfil e avaliação'
-                    : 'Adicionar ao pipeline'}
-                </button>
-              )}
-              <div className="section-title-bar">
-                <div>
-                  <h3>Evidências</h3>
-                  <p>Atuações em amistosos que sustentam a leitura.</p>
+                  ))}
                 </div>
               </div>
-              {selected.appearances
-                .sort((a: any, b: any) =>
-                  b.match.playedAt.localeCompare(a.match.playedAt),
-                )
-                .slice(0, 8)
-                .map((a: any) => (
-                  <div className="list-row" key={a.match.id}>
-                    <span>{date(a.match.playedAt)}</span>
-                    <b
-                      style={{
-                        minWidth: 0,
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                      }}
-                    >
-                      por {a.match.opponent}
-                    </b>
-                    <strong>
-                      {a.line.rating != null
-                        ? `Nota ${a.line.rating}`
-                        : 'Sem nota'}
-                    </strong>
-                  </div>
-                ))}
-            </>
+
+            </div>
           ) : (
             <div className="empty">
               <Search size={24} />
@@ -606,6 +756,8 @@ export function MarketWatchlist({
           )}
         </aside>
       </div>
+      
+      {/* 8. Pipeline Editing Modal */}
       {editing && (
         <div className="modal-backdrop">
           <section
