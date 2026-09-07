@@ -259,7 +259,7 @@ export function TacticsBoard({
         {/* O CAMPO DE FUTEBOL INTERATIVO */}
         <div className="pitch-wrapper">
           <div className="pitch-header-info">
-            <span className="pitch-formation-pill">{selectedFormation}</span>
+            <span className="pitch-phase-label">{phase==='with-ball'?'Estrutura com bola':'Estrutura sem bola'}</span>
             <span className="pitch-team-name">{teamName}</span>
           </div>
 

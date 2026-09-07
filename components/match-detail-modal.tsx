@@ -2,7 +2,7 @@
 /* oxlint-disable typescript/no-explicit-any, next/no-img-element, jsx-a11y/control-has-associated-label -- Match payloads and private crest URLs are runtime-provided. */
 
 import { useEffect, useRef, useState, useMemo } from 'react';
-import { Trophy, CalendarDays, MapPin, Download, Film, Pencil, EyeOff, Eye, Share2, Star } from 'lucide-react';
+import { Trophy, CalendarDays, MapPin, Download, Film, Pencil, EyeOff, Eye, Share2, Star, X, AlertTriangle } from 'lucide-react';
 import { type TeamId, type Match, type PlayerLine, result } from '@/lib/domain';
 
 const fmt = (n: number | null | undefined, dec = 0) =>
@@ -214,7 +214,7 @@ export function MatchDetailModal({
           </div>
           <h2 id="match-dialog-title" className="sr-only">Detalhes da partida contra {opponentRealName}</h2>
           <button type="button" className="icon-button" onClick={onClose} aria-label="Fechar detalhes da partida" autoFocus>
-            ✕
+            <X size={19}/>
           </button>
         </div>
 
@@ -242,7 +242,7 @@ export function MatchDetailModal({
               {outcomeLabel}
             </div>
             {match.excluded && (
-              <span className="excluded-warn-badge">⚠️ Desconsiderada das Estatísticas</span>
+              <span className="excluded-warn-badge"><AlertTriangle size={13}/> Desconsiderada das estatísticas</span>
             )}
           </div>
 
@@ -310,15 +310,15 @@ export function MatchDetailModal({
               </div>
             </div>
             <div className="mvp-stats-quick">
-              {mvp.goals ? <span className="mvp-stat-pill">⚽ {mvp.goals} gol{mvp.goals > 1 ? 's' : ''}</span> : null}
-              {mvp.assists ? <span className="mvp-stat-pill">👟 {mvp.assists} assist.</span> : null}
+              {mvp.goals ? <span className="mvp-stat-pill">{mvp.goals} gol{mvp.goals > 1 ? 's' : ''}</span> : null}
+              {mvp.assists ? <span className="mvp-stat-pill">{mvp.assists} assist.</span> : null}
               {mvp.passes !== null && mvp.passAttempts ? (
                 <span className="mvp-stat-pill">
-                  🎯 {mvp.passes}/{mvp.passAttempts} ({Math.round((mvp.passes / mvp.passAttempts) * 100)}% passes)
+                  {mvp.passes}/{mvp.passAttempts} passes ({Math.round((mvp.passes / mvp.passAttempts) * 100)}%)
                 </span>
               ) : null}
-              {mvp.tackles ? <span className="mvp-stat-pill">🛡️ {mvp.tackles} desarmes</span> : null}
-              {mvp.saves ? <span className="mvp-stat-pill">🧤 {mvp.saves} defesas</span> : null}
+              {mvp.tackles ? <span className="mvp-stat-pill">{mvp.tackles} desarmes</span> : null}
+              {mvp.saves ? <span className="mvp-stat-pill">{mvp.saves} defesas</span> : null}
               <div className="mvp-rating-box">
                 <small>NOTA</small>
                 <strong>{fmt(mvp.rating, 1)}</strong>
@@ -468,7 +468,7 @@ export function MatchDetailModal({
               onClick={() => setTab('own')}
               aria-pressed={tab === 'own'}
             >
-              🛡️ {brand.name} ({ownPlayers.length})
+              {brand.name} ({ownPlayers.length})
             </button>
             <button
               type="button"
@@ -476,7 +476,7 @@ export function MatchDetailModal({
               onClick={() => setTab('opp')}
               aria-pressed={tab === 'opp'}
             >
-              ⚔️ {opponentRealName} ({oppPlayers.length})
+              {opponentRealName} ({oppPlayers.length})
             </button>
           </div>
         </div>
