@@ -1,4 +1,3 @@
-import {collectGlobalPro} from './globalpro';
 import {AppError,config,db,secret} from './server';
 import {parseEA,type TeamId} from './domain';
 
@@ -90,11 +89,10 @@ export async function sync(team:TeamId,options?:{clearBackoff?:boolean}){
  if(options?.clearBackoff)await db().prepare("DELETE FROM snapshots WHERE team=? AND source='ea-backoff'").bind(team).run();
 
  const at=new Date().toISOString();let count=0;const errors:string[]=[];let succeeded=0;let eaSucceeded=0;
- try{const gp=await collectGlobalPro(team);count+=gp.count;succeeded++}catch(e){errors.push(e instanceof Error?e.message:'Falha GlobalPro')}
  const backoff=options?.clearBackoff?null:await db().prepare("SELECT data FROM snapshots WHERE team=? AND source='ea-backoff'").bind(team).first<{data:string}>();
  const activeBackoff=savedBackoff(backoff?.data,now);
  if(hasEA&&activeBackoff){hasEA=false;errors.push(`EA temporariamente indisponível. Nova tentativa após ${new Date(activeBackoff.until).toISOString()}.`)}
- const sources=hasEA?[['clubs/matches',{matchType:'leagueMatch',maxResultCount:'20'}],['clubs/matches',{matchType:'friendlyMatch',maxResultCount:'20'}],['clubs/matches',{matchType:'playoffMatch',maxResultCount:'20'}],['clubs/info',{}],['members/stats',{}],['members/career/stats',{}],['clubs/overallStats',{}],['clubs/seasonalStats',{}]] as const:[];
+ const sources=hasEA?[['clubs/matches',{matchType:'friendlyMatch',maxResultCount:'20'}],['clubs/info',{}],['members/stats',{}],['members/career/stats',{}],['clubs/overallStats',{}],['clubs/seasonalStats',{}]] as const:[];
  for(const [path,extra] of sources){
   try{
    const raw=await ea(path,{platform:c.platform,clubIds:clubId,clubId,...extra});

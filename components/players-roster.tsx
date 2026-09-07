@@ -1,7 +1,8 @@
 'use client';
+/* oxlint-disable typescript/no-explicit-any, jsx-a11y/prefer-tag-over-role, next/no-img-element -- Player records and private media URLs are runtime-provided. */
 
 import { useState, useMemo } from 'react';
-import { Search, Camera, Pencil, GitCompareArrows, Shield, Star, LayoutGrid, List } from 'lucide-react';
+import { Search, Camera, Pencil, GitCompareArrows, Shield, LayoutGrid, List } from 'lucide-react';
 
 interface PlayersRosterProps {
   roster: any[];
@@ -63,6 +64,7 @@ export function PlayersRoster({
         <div className="roster-search">
           <Search size={16} />
           <input
+            aria-label="Buscar jogador do elenco"
             placeholder="Buscar jogador do elenco..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -70,7 +72,7 @@ export function PlayersRoster({
         </div>
 
         <div className="roster-controls">
-          <select value={posFilter} onChange={(e) => setPosFilter(e.target.value)}>
+          <select aria-label="Filtrar elenco por posição" value={posFilter} onChange={(e) => setPosFilter(e.target.value)}>
             <option value="all">Todas as posições</option>
             <option value="ATA">Ataque (ATA)</option>
             <option value="MEI">Meio-Campo (MEI)</option>
@@ -81,22 +83,27 @@ export function PlayersRoster({
           {/* Alternador de visualização Cards vs Tabela */}
           <div className="view-mode-toggle">
             <button
+              type="button"
               className={`view-btn ${viewMode === 'cards' ? 'active' : ''}`}
               onClick={() => setViewMode('cards')}
               title="Visualização em Cards"
+              aria-pressed={viewMode === 'cards'}
             >
               <LayoutGrid size={16} /> Cards
             </button>
             <button
+              type="button"
               className={`view-btn ${viewMode === 'table' ? 'active' : ''}`}
               onClick={() => setViewMode('table')}
               title="Visualização em Tabela"
+              aria-pressed={viewMode === 'table'}
             >
               <List size={16} /> Tabela
             </button>
           </div>
 
           <button
+            type="button"
             className="button small"
             disabled={comparison.length !== 2}
             onClick={() => onCompare(roster.filter((p) => comparison.includes(p.id)))}
@@ -134,6 +141,13 @@ export function PlayersRoster({
                   onClick={() => onSelectPlayer(p)}
                   role="button"
                   tabIndex={0}
+                  aria-label={`Abrir perfil de ${p.name}`}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      onSelectPlayer(p);
+                    }
+                  }}
                 >
                   {p.photo ? (
                     <img src={p.photo} alt={p.name} className="fc-player-photo" />
@@ -146,8 +160,10 @@ export function PlayersRoster({
 
                   {admin && (
                     <button
+                      type="button"
                       className="fc-photo-edit-btn"
                       title="Alterar foto do jogador"
+                      aria-label={`Alterar foto de ${p.name}`}
                       onClick={(e) => {
                         e.stopPropagation();
                         onEditPlayer(p);
@@ -160,8 +176,8 @@ export function PlayersRoster({
 
                 {/* Nome do Jogador */}
                 <div className="fc-name-strip">
-                  <h3 onClick={() => onSelectPlayer(p)}>{p.name}</h3>
-                  <small>{p.nationality || 'Brasil'}</small>
+                  <h3>{p.name}</h3>
+                  <small>{p.nationality || 'Nacionalidade não informada'}</small>
                 </div>
 
                 {/* Linha de Estatísticas Chave */}
@@ -172,15 +188,15 @@ export function PlayersRoster({
                   </div>
                   <div className="fc-stat-item">
                     <small>GOLS</small>
-                    <b>{p.available.goals ? p.goals : 0}</b>
+                    <b>{p.available.goals ? p.goals : '—'}</b>
                   </div>
                   <div className="fc-stat-item">
                     <small>ASSIST</small>
-                    <b>{p.available.assists ? p.assists : 0}</b>
+                    <b>{p.available.assists ? p.assists : '—'}</b>
                   </div>
                   <div className="fc-stat-item">
                     <small>PASSES</small>
-                    <b>{p.passAccuracy ? `${fmt(p.passAccuracy, 0)}%` : '—'}</b>
+                    <b>{p.passAccuracy !== null && p.passAccuracy !== undefined ? `${fmt(p.passAccuracy, 0)}%` : '—'}</b>
                   </div>
                 </div>
 
@@ -203,8 +219,10 @@ export function PlayersRoster({
 
                   {admin && (
                     <button
+                      type="button"
                       className="icon-button"
                       title="Editar perfil"
+                      aria-label={`Editar perfil de ${p.name}`}
                       onClick={() => onEditPlayer(p)}
                     >
                       <Pencil size={14} />
@@ -242,6 +260,7 @@ export function PlayersRoster({
                   <tr key={p.id}>
                     <td>
                       <input
+                        aria-label={`Selecionar ${p.name} para comparação`}
                         type="checkbox"
                         checked={isComparing}
                         onChange={(e) =>
@@ -254,7 +273,13 @@ export function PlayersRoster({
                       />
                     </td>
                     <td>
-                      <div className="table-player-cell" onClick={() => onSelectPlayer(p)}>
+                      <button
+                        type="button"
+                        className="table-player-cell"
+                        onClick={() => onSelectPlayer(p)}
+                        aria-label={`Abrir perfil de ${p.name}`}
+                        style={{ background: 'none', border: 0, padding: 0, color: 'inherit', width: '100%', textAlign: 'left' }}
+                      >
                         <div className="table-avatar">
                           {p.photo ? (
                             <img src={p.photo} alt={p.name} />
@@ -264,9 +289,9 @@ export function PlayersRoster({
                         </div>
                         <div>
                           <b>{p.name}</b>
-                          <small>{p.nationality || 'Brasil'}</small>
+                          <small>{p.nationality || 'Nacionalidade não informada'}</small>
                         </div>
-                      </div>
+                      </button>
                     </td>
                     <td>
                       <span className={`pos-tag ${pos.cls}`}>{pos.label}</span>
@@ -276,20 +301,20 @@ export function PlayersRoster({
                     </td>
                     <td>{p.games}</td>
                     <td>
-                      {p.available.goals && p.goals > 0 ? (
-                        <span className="stat-highlight goal">⚽ {p.goals}</span>
+                      {!p.available.goals ? '—' : p.goals > 0 ? (
+                        <span className="stat-highlight goal">{p.goals}</span>
                       ) : (
                         '0'
                       )}
                     </td>
                     <td>
-                      {p.available.assists && p.assists > 0 ? (
-                        <span className="stat-highlight assist">👟 {p.assists}</span>
+                      {!p.available.assists ? '—' : p.assists > 0 ? (
+                        <span className="stat-highlight assist">{p.assists}</span>
                       ) : (
                         '0'
                       )}
                     </td>
-                    <td>{p.passAccuracy ? `${fmt(p.passAccuracy, 1)}%` : '—'}</td>
+                    <td>{p.passAccuracy !== null && p.passAccuracy !== undefined ? `${fmt(p.passAccuracy, 1)}%` : '—'}</td>
                     <td>
                       <span className={`match-rating-badge ${ratingClass(p.rating)}`}>
                         {fmt(p.rating, 2)}
@@ -298,8 +323,10 @@ export function PlayersRoster({
                     {admin && (
                       <td>
                         <button
+                          type="button"
                           className="icon-button"
                           title="Editar perfil e foto"
+                          aria-label={`Editar perfil e foto de ${p.name}`}
                           onClick={() => onEditPlayer(p)}
                         >
                           <Pencil size={15} />

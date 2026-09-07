@@ -14,7 +14,7 @@ const TEAMS = {
   vortex: { clubId: '4504', platform: 'common-gen5' },
 };
 
-const MATCH_TYPES = ['leagueMatch', 'friendlyMatch', 'playoffMatch'];
+const MATCH_TYPES = ['friendlyMatch'];
 const SNAPSHOT_PATHS = ['clubs/info', 'members/stats', 'members/career/stats', 'clubs/overallStats', 'clubs/seasonalStats'];
 
 const wait = ms => new Promise(r => setTimeout(r, ms));

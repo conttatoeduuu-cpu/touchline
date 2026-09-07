@@ -1,7 +1,8 @@
 'use client';
+/* oxlint-disable typescript/no-explicit-any, jsx-a11y/label-has-associated-control -- Persisted lineup JSON is versioned dynamically; section labels describe adjacent controls. */
 
-import { useState } from 'react';
-import { Plus, Download, Trash2, Shield, Swords, Zap, Flag, Check, Save } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Download, Trash2, Save, Undo2, Redo2, RotateCcw } from 'lucide-react';
 import type { RecordItem } from '@/lib/domain';
 
 type AppRecord = RecordItem<Record<string, any>>;
@@ -15,6 +16,9 @@ interface TacticsBoardProps {
   remove: (r: AppRecord) => void;
   teamName: string;
 }
+
+type Phase = 'with-ball' | 'without-ball';
+type BoardSnapshot = {formation:string;slots:string[];phase:Phase};
 
 interface FormationConfig {
   name: string;
@@ -147,8 +151,19 @@ export function TacticsBoard({
   const [corners, setCorners] = useState('');
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+  const [phase,setPhase]=useState<Phase>('with-ball');
+  const [instructions,setInstructions]=useState<Record<string,string>>({});
+  const [selectedSlot,setSelectedSlot]=useState<number|null>(null);
+  const [past,setPast]=useState<BoardSnapshot[]>([]);
+  const [future,setFuture]=useState<BoardSnapshot[]>([]);
 
   const currentCfg = FORMATIONS[selectedFormation] || FORMATIONS['4-3-3'];
+  const bench=useMemo(()=>players.filter(p=>!slots.includes(p.id)),[players,slots]);
+  const snapshot=():BoardSnapshot=>({formation:selectedFormation,slots:[...slots],phase});
+  function commit(next:Partial<BoardSnapshot>){setPast(v=>[...v.slice(-29),snapshot()]);setFuture([]);if(next.formation!==undefined)setSelectedFormation(next.formation);if(next.slots!==undefined)setSlots(next.slots);if(next.phase!==undefined)setPhase(next.phase)}
+  function restore(s:BoardSnapshot){setSelectedFormation(s.formation);setSlots(s.slots);setPhase(s.phase)}
+  function undo(){const previous=past.at(-1);if(!previous)return;setFuture(v=>[snapshot(),...v]);setPast(v=>v.slice(0,-1));restore(previous)}
+  function redo(){const next=future[0];if(!next)return;setPast(v=>[...v,snapshot()]);setFuture(v=>v.slice(1));restore(next)}
 
   function loadLineup(r: AppRecord) {
     const data = r.data;
@@ -159,6 +174,9 @@ export function TacticsBoard({
     if (Array.isArray(data.slots)) {
       setSlots(data.slots.map((s: any) => (typeof s === 'string' ? s : s?.id ?? '')));
     }
+    setInstructions(data.instructions??{});
+    if(data.phase==='with-ball'||data.phase==='without-ball')setPhase(data.phase);
+    setPast([]);setFuture([]);
     if (data.styleDef) setStyleDef(data.styleDef);
     if (data.styleOff) setStyleOff(data.styleOff);
     if (data.captain) setCaptain(data.captain);
@@ -191,6 +209,8 @@ export function TacticsBoard({
         penalties,
         freeKicks,
         corners,
+        phase,
+        instructions,
       });
     } catch (e) {
       setErr((e as Error).message);
@@ -201,18 +221,18 @@ export function TacticsBoard({
 
   return (
     <div className="tactics-container">
-      {/* Barra de Seleção Tática do Topo */}
       <div className="tactics-top-panel">
         <div className="tactics-title-box">
-          <h2>Prancheta Tática Profissional</h2>
-          <p>Monte o esquema tático, defina instruções de jogo e escale seu 11 titular.</p>
+          <h2>Plano de jogo</h2>
+          <p>Organize o onze, as fases e as responsabilidades de cada jogador.</p>
         </div>
 
         <div className="tactics-formation-selector">
-          <label>ESQUEMA TÁTICO:</label>
+          <label htmlFor="tactics-formation">Formação</label>
           <select
+            id="tactics-formation"
             value={selectedFormation}
-            onChange={(e) => setSelectedFormation(e.target.value)}
+            onChange={(e) => commit({formation:e.target.value})}
             aria-label="Escolher Formação Tática"
           >
             {Object.entries(FORMATIONS).map(([key, cfg]) => (
@@ -222,6 +242,17 @@ export function TacticsBoard({
             ))}
           </select>
         </div>
+        <div className="tactics-history-actions" aria-label="Histórico de alterações">
+          <button className="icon-button" onClick={undo} disabled={!past.length} aria-label="Desfazer"><Undo2 size={17}/></button>
+          <button className="icon-button" onClick={redo} disabled={!future.length} aria-label="Refazer"><Redo2 size={17}/></button>
+          <button className="icon-button" onClick={()=>commit({slots:Array(11).fill('')})} disabled={!slots.some(Boolean)} aria-label="Limpar escalação"><RotateCcw size={17}/></button>
+        </div>
+      </div>
+
+      <div className="tactics-phase-tabs" role="tablist" aria-label="Fase do jogo">
+        <button role="tab" aria-selected={phase==='with-ball'} className={phase==='with-ball'?'active':''} onClick={()=>commit({phase:'with-ball'})}>Com bola</button>
+        <button role="tab" aria-selected={phase==='without-ball'} className={phase==='without-ball'?'active':''} onClick={()=>commit({phase:'without-ball'})}>Sem bola</button>
+        <p>{phase==='with-ball'?'Estrutura de construção, apoio e ocupação do último terço.':'Bloco defensivo, pressão e proteção dos espaços.'}</p>
       </div>
 
       <div className="tactics-grid">
@@ -246,12 +277,14 @@ export function TacticsBoard({
             {currentCfg.positions.map((slot, idx) => {
               const assignedPlayer = players.find((p) => p.id === slots[idx]);
               const isCap = assignedPlayer && captain === assignedPlayer.id;
+              const phaseY=phase==='without-ball'&&slot.pos!=='GOL'?Math.min(86,slot.y+8):slot.y;
 
               return (
                 <div
                   key={idx}
                   className="tactical-token"
-                  style={{ left: `${slot.x}%`, top: `${slot.y}%` }}
+                  style={{ left: `${slot.x}%`, top: `${phaseY}%` }}
+                  data-selected={selectedSlot===idx||undefined}
                 >
                   <div className={`token-badge pos-${slot.pos.toLowerCase()}`}>
                     <span className="token-pos">{slot.pos}</span>
@@ -264,9 +297,8 @@ export function TacticsBoard({
                       <select
                         aria-label={`Escalar para ${slot.role}`}
                         value={slots[idx] ?? ''}
-                        onChange={(e) =>
-                          setSlots(slots.map((val, sIdx) => (sIdx === idx ? e.target.value : val)))
-                        }
+                        onFocus={()=>setSelectedSlot(idx)}
+                        onChange={(e) => commit({slots:slots.map((val,sIdx)=>sIdx===idx?e.target.value:val)})}
                       >
                         <option value="">(Vago)</option>
                         {players.map((p) => (
@@ -285,6 +317,7 @@ export function TacticsBoard({
               );
             })}
           </div>
+          <div className="tactics-pitch-status" aria-live="polite"><span>{slots.filter(Boolean).length}/11 escalados</span><span>{bench.length} disponíveis no banco</span></div>
         </div>
 
         {/* PAINEL LATERAL: ESTRATÉGIA, BATEDORES E SALVAMENTO */}
@@ -320,6 +353,16 @@ export function TacticsBoard({
                 <p className="strategy-val">{styleOff}</p>
               )}
             </div>
+          </div>
+
+          <div className="tactics-card tactics-bench-card">
+            <h3>Banco e disponíveis <span>{bench.length}</span></h3>
+            <div className="tactics-bench-list">{bench.slice(0,12).map(p=><button key={p.id} type="button" disabled={!admin||selectedSlot===null} onClick={()=>selectedSlot!==null&&commit({slots:slots.map((v,i)=>i===selectedSlot?p.id:v)})}><span className="bench-player-mark">{p.name.slice(0,2).toUpperCase()}</span><span><b>{p.name}</b><small>{p.position||'Posição não informada'}</small></span></button>)}{!bench.length&&<p className="muted-empty">Todo o elenco disponível está escalado.</p>}</div>{admin&&<small className="tactics-help">Selecione uma posição no campo e depois um jogador do banco.</small>}
+          </div>
+
+          <div className="tactics-card tactics-instructions-card">
+            <h3>Instrução individual</h3>
+            {selectedSlot===null?<p className="muted-empty">Selecione uma posição no campo para registrar uma orientação.</p>:<><p className="selected-role">{currentCfg.positions[selectedSlot]?.role} · {players.find(p=>p.id===slots[selectedSlot])?.name||'posição vaga'}</p>{admin?<textarea rows={3} value={instructions[String(selectedSlot)]??''} onChange={e=>setInstructions(v=>({...v,[String(selectedSlot)]:e.target.value}))} placeholder="Ex.: fechar o corredor por dentro e apoiar a saída curta."/>:<p className="strategy-val">{instructions[String(selectedSlot)]||'Sem instrução registrada.'}</p>}</>}
           </div>
 
           {/* Batedores e Funções */}

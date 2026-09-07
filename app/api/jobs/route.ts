@@ -1,6 +1,6 @@
 import {secret,equal,json,fail,AppError,db} from '@/lib/server';
 import {sync} from '@/lib/ea';
-import {isTeam,parseEA,type TeamId,type Match} from '@/lib/domain';
+import {isTeam,parseEA,type Match} from '@/lib/domain';
 import {config} from '@/lib/server';
 
 // POST /api/jobs → dispara sync normal (GlobalPro + EA via relay/direto)

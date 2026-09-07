@@ -1,5 +1,4 @@
 import {readFileSync,existsSync,mkdirSync,appendFileSync,statSync,writeFileSync} from 'node:fs';
-import {fileURLToPath} from 'node:url';
 const project=new URL('../',import.meta.url);
 const keys=JSON.parse(readFileSync(new URL('.local-access.json',project),'utf8'));
 const {origin}=JSON.parse(readFileSync(new URL('collector.config.json',project),'utf8'));

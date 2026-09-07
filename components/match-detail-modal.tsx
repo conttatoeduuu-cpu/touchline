@@ -1,8 +1,9 @@
 'use client';
+/* oxlint-disable typescript/no-explicit-any, next/no-img-element, jsx-a11y/control-has-associated-label -- Match payloads and private crest URLs are runtime-provided. */
 
-import { useState, useMemo } from 'react';
-import { Trophy, CalendarDays, MapPin, Download, Film, Pencil, EyeOff, Eye, Share2, Check, Star } from 'lucide-react';
-import { TEAMS, type TeamId, type Match, type PlayerLine, result } from '@/lib/domain';
+import { useEffect, useRef, useState, useMemo } from 'react';
+import { Trophy, CalendarDays, MapPin, Download, Film, Pencil, EyeOff, Eye, Share2, Star } from 'lucide-react';
+import { type TeamId, type Match, type PlayerLine, result } from '@/lib/domain';
 
 const fmt = (n: number | null | undefined, dec = 0) =>
   n === null || n === undefined ? '—' : n.toLocaleString('pt-BR', { maximumFractionDigits: dec });
@@ -58,7 +59,7 @@ interface Props {
 
 export function MatchDetailModal({
   match,
-  team,
+  team: _team,
   brand,
   settings,
   admin,
@@ -70,8 +71,47 @@ export function MatchDetailModal({
   onToggleExclude,
   onDiscord,
 }: Props) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
   const [tab, setTab] = useState<'all' | 'own' | 'opp'>('all');
   const [toggling, setToggling] = useState(false);
+
+  useEffect(() => {
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    const dialog = dialogRef.current;
+    if (dialog && !dialog.contains(document.activeElement)) dialog.focus();
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+      if (event.key !== 'Tab' || !dialog) return;
+      const focusable = Array.from(
+        dialog.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'),
+      ).filter((element) => !element.hasAttribute('hidden'));
+      if (!focusable.length) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      previouslyFocused?.focus();
+    };
+  }, [onClose]);
 
   // Informações extras dos clubes via raw da EA
   const raw = match.raw as any;
@@ -155,7 +195,7 @@ export function MatchDetailModal({
 
   return (
     <div className="modal-backdrop">
-      <section className="modal wide match-modal-pro" role="dialog" aria-modal="true" aria-label="Detalhes da Partida">
+      <dialog ref={dialogRef} open className="modal wide match-modal-pro" aria-labelledby="match-dialog-title" tabIndex={-1}>
         {/* Top bar com metadados */}
         <div className="match-meta-bar">
           <div className="match-meta-left">
@@ -172,7 +212,8 @@ export function MatchDetailModal({
               </span>
             )}
           </div>
-          <button className="icon-button" onClick={onClose} aria-label="Fechar">
+          <h2 id="match-dialog-title" className="sr-only">Detalhes da partida contra {opponentRealName}</h2>
+          <button type="button" className="icon-button" onClick={onClose} aria-label="Fechar detalhes da partida" autoFocus>
             ✕
           </button>
         </div>
@@ -221,6 +262,7 @@ export function MatchDetailModal({
                 <button
                   type="button"
                   title="Definir escudo do adversário"
+                  aria-label={`Definir escudo de ${opponentRealName}`}
                   onClick={(e) => {
                     e.stopPropagation();
                     const url = window.prompt(`URL HTTPS do escudo para ${opponentRealName}:`, opponentLogo || '');
@@ -413,20 +455,26 @@ export function MatchDetailModal({
         <div className="match-players-tabs-bar">
           <div className="tabs-pill-group">
             <button
+              type="button"
               className={`tab-pill ${tab === 'all' ? 'active' : ''}`}
               onClick={() => setTab('all')}
+              aria-pressed={tab === 'all'}
             >
               Todos em campo ({match.players.length})
             </button>
             <button
+              type="button"
               className={`tab-pill ${tab === 'own' ? 'active' : ''}`}
               onClick={() => setTab('own')}
+              aria-pressed={tab === 'own'}
             >
               🛡️ {brand.name} ({ownPlayers.length})
             </button>
             <button
+              type="button"
               className={`tab-pill ${tab === 'opp' ? 'active' : ''}`}
               onClick={() => setTab('opp')}
+              aria-pressed={tab === 'opp'}
             >
               ⚔️ {opponentRealName} ({oppPlayers.length})
             </button>
@@ -572,7 +620,7 @@ export function MatchDetailModal({
         {/* AÇÕES NO RODAPÉ */}
         <div className="match-modal-footer">
           <div className="footer-left">
-            <button className="button" onClick={() => onSaveImage('match', match)}>
+            <button type="button" className="button" onClick={() => onSaveImage('match', match)}>
               <Download size={15} /> Exportar Arte PNG
             </button>
             {match.video && (
@@ -581,6 +629,7 @@ export function MatchDetailModal({
               </a>
             )}
             <button
+              type="button"
               className="button"
               onClick={() =>
                 download('partida.json', JSON.stringify(match, null, 2), 'application/json')
@@ -593,6 +642,7 @@ export function MatchDetailModal({
           <div className="footer-right">
             {admin && onToggleExclude && (
               <button
+                type="button"
                 className={`button ${match.excluded ? 'primary' : 'danger'}`}
                 disabled={toggling}
                 onClick={async () => {
@@ -618,6 +668,7 @@ export function MatchDetailModal({
 
             {admin && onEdit && (
               <button
+                type="button"
                 className="button primary"
                 onClick={() => {
                   onEdit(match);
@@ -630,6 +681,7 @@ export function MatchDetailModal({
 
             {admin && settings?.discordConfigured && onDiscord && (
               <button
+                type="button"
                 className="button"
                 onClick={() => onDiscord(match)}
               >
@@ -638,7 +690,7 @@ export function MatchDetailModal({
             )}
           </div>
         </div>
-      </section>
+      </dialog>
     </div>
   );
 }

@@ -1,28 +1,48 @@
 'use client';
-
-import { useState, useMemo } from 'react';
-import { Target, Search, Plus, Download, Sparkles, Shield, Trophy, ExternalLink, Image as ImageIcon, Trash2 } from 'lucide-react';
-import type { Match, RecordItem } from '@/lib/domain';
-
+/* oxlint-disable typescript/no-explicit-any, react/react-compiler -- External EA payloads and JSON records are runtime-shaped. */
+import { useMemo, useState } from 'react';
+import {
+  AlertCircle,
+  ChevronRight,
+  LoaderCircle,
+  Search,
+  Shield,
+  Trash2,
+  Users,
+} from 'lucide-react';
+import type { Match, RecordItem, TeamId } from '@/lib/domain';
 type AppRecord = RecordItem<Record<string, any>>;
-
-interface ScoutingHubProps {
+type Props = {
   matches: Match[];
   records: AppRecord[];
   admin: boolean;
-  team: string;
+  team: TeamId;
   onAnalyze: (id: string) => Promise<void>;
-  onCreateReport: (values: any) => Promise<void>;
-  onSaveOpponentLogo?: (opponentName: string, logoUrl: string) => Promise<void>;
+  onCreateReport: (v: any) => Promise<void>;
+  onSaveOpponentLogo?: (name: string, url: string) => Promise<void>;
   onRemoveRecord: (r: AppRecord) => Promise<void>;
-}
-
-const fmt = (n: number | null | undefined, dec = 0) =>
-  n === null || n === undefined ? '—' : n.toLocaleString('pt-BR', { maximumFractionDigits: dec });
-
-const dateFormatted = (s: string) =>
-  new Date(s).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
-
+};
+type Rival = {
+  key: string;
+  name: string;
+  clubId?: string;
+  games: number;
+  wins: number;
+  draws: number;
+  losses: number;
+  gf: number;
+  ga: number;
+  lastMatch: string;
+  matches: Match[];
+  report?: AppRecord;
+};
+const norm = (s: string) => s.trim().toLocaleLowerCase('pt-BR');
+const date = (s: string) =>
+  new Date(s).toLocaleDateString('pt-BR', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
 export function ScoutingHub({
   matches,
   records,
@@ -30,44 +50,24 @@ export function ScoutingHub({
   team,
   onAnalyze,
   onCreateReport,
-  onSaveOpponentLogo,
   onRemoveRecord,
-}: ScoutingHubProps) {
+}: Props) {
   const [query, setQuery] = useState('');
-  const [modalReport, setModalReport] = useState<AppRecord | null>(null);
-  const [isCreating, setIsCreating] = useState(false);
-  const [formName, setFormName] = useState('');
-  const [formClubId, setFormClubId] = useState('');
-  const [editingLogoOpponent, setEditingLogoOpponent] = useState<string | null>(null);
-  const [logoInput, setLogoInput] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState('');
-
-  // Relatórios de scout salvos
-  const scoutReports = useMemo(
+  const [results, setResults] = useState<any[]>([]);
+  const [selectedKey, setSelectedKey] = useState('');
+  const [busy, setBusy] = useState('');
+  const [error, setError] = useState('');
+  const reports = useMemo(
     () => records.filter((r) => r.kind === 'scout'),
-    [records]
+    [records],
   );
-
-  // Logos de adversários salvas
-  const logoRecords = useMemo(
-    () => records.filter((r) => r.kind === 'team_logo'),
-    [records]
-  );
-
-  const getOpponentLogo = (name: string) => {
-    const found = logoRecords.find(
-      (r) => r.data.clubName?.toLowerCase() === name.toLowerCase()
-    );
-    return found?.data.logoUrl || null;
-  };
-
-  // Rivais enfrentados no histórico da nossa base de dados
-  const rivalClubs = useMemo(() => {
-    const map = new Map<string, any>();
+  const rivals = useMemo(() => {
+    const map = new Map<string, Rival>();
     for (const m of matches) {
-      if (m.excluded || !m.opponent) continue;
-      const existing = map.get(m.opponent) ?? {
+      if (m.excluded || m.type !== 'friendlyMatch' || !m.opponent) continue;
+      const key = norm(m.opponent);
+      const r = map.get(key) ?? {
+        key,
         name: m.opponent,
         games: 0,
         wins: 0,
@@ -76,325 +76,413 @@ export function ScoutingHub({
         gf: 0,
         ga: 0,
         lastMatch: m.playedAt,
-        sampleMatch: m,
+        matches: [],
       };
-      existing.games += 1;
-      if (m.goalsFor > m.goalsAgainst) existing.wins += 1;
-      else if (m.goalsFor === m.goalsAgainst) existing.draws += 1;
-      else existing.losses += 1;
-      existing.gf += m.goalsFor;
-      existing.ga += m.goalsAgainst;
-      map.set(m.opponent, existing);
+      r.games++;
+      r.gf += m.goalsFor;
+      r.ga += m.goalsAgainst;
+      r.matches.push(m);
+      if (m.goalsFor > m.goalsAgainst) r.wins++;
+      else if (m.goalsFor === m.goalsAgainst) r.draws++;
+      else r.losses++;
+      if (m.playedAt > r.lastMatch) r.lastMatch = m.playedAt;
+      map.set(key, r);
     }
-    return [...map.values()].sort((a, b) => b.games - a.games);
-  }, [matches]);
-
-  const filteredRivals = useMemo(() => {
-    if (!query.trim()) return rivalClubs;
-    return rivalClubs.filter((r) => r.name.toLowerCase().includes(query.toLowerCase()));
-  }, [rivalClubs, query]);
-
-  async function handleCreate() {
+    for (const report of reports) {
+      const existing = [...map.values()].find(
+        (r) => norm(r.name) === norm(report.data.name || ''),
+      );
+      if (existing) {
+        existing.report = report;
+        existing.clubId = String(report.data.clubId || '');
+      } else {
+        const key = `ea:${report.data.clubId || report.id}`;
+        map.set(key, {
+          key,
+          name: report.data.name || `Clube ${report.data.clubId}`,
+          clubId: String(report.data.clubId || ''),
+          games: 0,
+          wins: 0,
+          draws: 0,
+          losses: 0,
+          gf: 0,
+          ga: 0,
+          lastMatch: report.createdAt,
+          matches: [],
+          report,
+        });
+      }
+    }
+    return [...map.values()].sort((a, b) =>
+      b.lastMatch.localeCompare(a.lastMatch),
+    );
+  }, [matches, reports]);
+  const filtered = rivals.filter((r) => norm(r.name).includes(norm(query)));
+  const selected = rivals.find((r) => r.key === selectedKey) ?? filtered[0];
+  const dossier = (
+    (selected?.report?.data.matches as Match[] | undefined) ??
+    selected?.matches ??
+    []
+  ).filter(
+    (match): match is Match => Boolean(match) && match.type === 'friendlyMatch',
+  );
+  const players = useMemo(() => {
+    const map = new Map<string, any>();
+    for (const m of dossier)
+      for (const p of m.players || []) {
+        if (p.own) continue;
+        const x = map.get(p.id) ?? {
+          id: p.id,
+          name: p.name,
+          position: p.position,
+          games: 0,
+          goals: 0,
+          assists: 0,
+          sum: 0,
+          ratings: 0,
+        };
+        x.games++;
+        x.goals += p.goals ?? 0;
+        x.assists += p.assists ?? 0;
+        if (p.rating != null) {
+          x.sum += p.rating;
+          x.ratings++;
+        }
+        map.set(p.id, x);
+      }
+    return [...map.values()].sort(
+      (a, b) => b.games - a.games || b.goals - a.goals,
+    );
+  }, [dossier]);
+  const lines = dossier.reduce(
+    (n, m) => n + (m.players || []).filter((p) => !p.own).length,
+    0,
+  );
+  const rated = dossier.reduce(
+    (n, m) =>
+      n + (m.players || []).filter((p) => !p.own && p.rating != null).length,
+    0,
+  );
+  async function searchEA() {
+    if (query.trim().length < 3) {
+      setError('Digite pelo menos 3 letras.');
+      return;
+    }
+    setBusy('search');
+    setError('');
     try {
-      setErr('');
-      if (!formClubId.trim()) throw new Error('Informe o ID do clube na EA.');
-      setBusy(true);
-      await onCreateReport({
-        name: formName || `Clube ${formClubId}`,
-        clubId: formClubId.trim(),
+      const r = await fetch(`/api/${team}/search`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: query.trim() }),
       });
-      setIsCreating(false);
-      setFormName('');
-      setFormClubId('');
+      const b: any = await r.json();
+      if (!r.ok) throw new Error(b.error || 'Busca indisponível.');
+      const rows = Array.isArray(b)
+        ? b
+        : Object.entries(b || {}).map(([id, value]) => ({
+            ...(value && typeof value === 'object' ? value : {}),
+            clubId: (value as any)?.clubId ?? id,
+          }));
+      setResults(rows);
+      if (!rows.length) setError('Nenhum clube encontrado pela EA.');
     } catch (e) {
-      setErr((e as Error).message);
+      setError((e as Error).message);
     } finally {
-      setBusy(false);
+      setBusy('');
     }
   }
-
-  async function handleSaveLogo() {
-    if (!editingLogoOpponent || !onSaveOpponentLogo) return;
-    setBusy(true);
+  async function create(item: any) {
+    const clubId = String(item.clubId ?? item.clubid ?? item.id ?? '');
+    const name = String(
+      item.name ?? item.clubName ?? item.clubname ?? `Clube ${clubId}`,
+    );
+    if (!/^\d+$/.test(clubId)) {
+      setError('A fonte não retornou um ID válido.');
+      return;
+    }
+    setBusy(clubId);
     try {
-      await onSaveOpponentLogo(editingLogoOpponent, logoInput.trim());
-      setEditingLogoOpponent(null);
-      setLogoInput('');
+      await onCreateReport({ name, clubId });
+      setResults([]);
+    } catch (e) {
+      setError((e as Error).message);
     } finally {
-      setBusy(false);
+      setBusy('');
     }
   }
-
   return (
     <div className="scouting-container">
-      {/* CABEÇALHO LIMPO DO SCOUTING */}
       <div className="scouting-header-box">
         <div className="scouting-title-wrap">
-          <h2>Centro de Inteligência de Adversários (Scouting)</h2>
+          <h2>Diretório de adversários</h2>
           <p>
-            Relatórios táticos de rivais, histórico de confrontos e análise de perigo para os
-            próximos jogos.
+            Busque clubes na EA ou consulte rivais enfrentados em amistosos.
+            Todo o dossiê usa exclusivamente partidas amistosas.
           </p>
         </div>
-
-        {admin && (
-          <button className="button primary" onClick={() => setIsCreating(true)}>
-            <Plus size={16} /> Novo Relatório por ID
-          </button>
-        )}
       </div>
-
-      {/* RELATÓRIOS SALVOS / EM ANDAMENTO */}
-      {scoutReports.length > 0 && (
-        <div className="scouting-saved-section">
-          <h3>Relatórios Táticos Cadastrados ({scoutReports.length})</h3>
-          <div className="scout-cards-grid">
-            {scoutReports.map((r) => (
-              <div key={r.id} className="scout-report-card">
-                <div className="scout-report-top">
-                  <div className="scout-badge-icon">
-                    <Target size={20} />
-                  </div>
-                  <div>
-                    <h4>{r.data.name}</h4>
-                    <span className="scout-date">{dateFormatted(r.createdAt)}</span>
-                  </div>
-                </div>
-
-                <p className="scout-summary-text">{r.data.summary || 'Aguardando dados da EA.'}</p>
-
-                {r.data.aiAnalysis && (
-                  <div className="scout-ai-badge">
-                    <Sparkles size={12} /> ANÁLISE IA TÁTICA DISPONÍVEL
-                  </div>
-                )}
-
-                <div className="scout-card-actions">
-                  <button className="button small" onClick={() => setModalReport(r)}>
-                    Abrir Dossiê
-                  </button>
-                  {admin && (
-                    <button
-                      className="icon-button"
-                      onClick={() => onRemoveRecord(r)}
-                      title="Excluir"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+      <div className="toolbar">
+        <label className="search">
+          <Search size={17} aria-hidden="true" />
+          <input
+            aria-label="Buscar adversário"
+            placeholder="Nome do clube adversário"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void searchEA();
+            }}
+          />
+        </label>
+        <button
+          className="button primary"
+          disabled={busy === 'search' || query.trim().length < 3}
+          onClick={() => void searchEA()}
+        >
+          {busy === 'search' ? (
+            <LoaderCircle className="spin" size={16} />
+          ) : (
+            <Search size={16} />
+          )}
+          Buscar na EA
+        </button>
+      </div>
+      {error && (
+        <p className="error-text" role="alert">
+          <AlertCircle size={15} /> {error}
+        </p>
       )}
-
-      {/* RADAR DE RIVAIS ENFRENTADOS (COM OPÇÃO DE LOGO PARA A DIRETORIA) */}
-      <div className="scouting-rivals-section">
-        <div className="section-title-bar">
-          <div>
-            <h3>Clubes Enfrentados & Dossiê de Confronto</h3>
-            <p>Gerencie logos, veja o histórico e analise pontos fortes dos rivais.</p>
-          </div>
-          <div className="rival-search-box">
-            <Search size={15} />
-            <input
-              placeholder="Buscar adversário..."
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-          </div>
-        </div>
-
-        <div className="rivals-grid">
-          {filteredRivals.map((riv) => {
-            const logo = getOpponentLogo(riv.name);
-
+      {results.length > 0 && (
+        <section className="panel">
+          <header>
+            <h2>Resultados da EA</h2>
+            <span className="muted">
+              A coleta usa exclusivamente até 20 amistosos
+            </span>
+          </header>
+          {results.map((x: any, i: number) => {
+            const id = String(x.clubId ?? x.clubid ?? x.id ?? '');
+            const name = String(
+              x.name ?? x.clubName ?? x.clubname ?? `Resultado ${i + 1}`,
+            );
             return (
-              <div key={riv.name} className="rival-card">
-                <div className="rival-card-top">
-                  <div className="rival-logo-frame">
-                    {logo ? (
-                      <img src={logo} alt={riv.name} />
-                    ) : (
-                      <span className="rival-mono">{riv.name.slice(0, 2).toUpperCase()}</span>
-                    )}
-                  </div>
-
-                  <div className="rival-info">
-                    <h4>{riv.name}</h4>
-                    <span className="rival-games-tag">{riv.games} confronto{riv.games > 1 ? 's' : ''}</span>
-                  </div>
-
-                  {admin && (
-                    <button
-                      className="icon-button"
-                      title="Alterar/Adicionar Logo"
-                      onClick={() => {
-                        setEditingLogoOpponent(riv.name);
-                        setLogoInput(logo || '');
-                      }}
-                    >
-                      <ImageIcon size={15} />
-                    </button>
-                  )}
+              <div className="list-row" key={id || i}>
+                <div>
+                  <b>{name}</b>
+                  <small>{id ? `ID EA ${id}` : 'ID indisponível'}</small>
                 </div>
-
-                <div className="rival-h2h-strip">
-                  <div className="h2h-stat">
-                    <span>VITÓRIAS</span>
-                    <b className="c-v">{riv.wins}</b>
-                  </div>
-                  <div className="h2h-stat">
-                    <span>EMPATES</span>
-                    <b className="c-e">{riv.draws}</b>
-                  </div>
-                  <div className="h2h-stat">
-                    <span>DERROTAS</span>
-                    <b className="c-d">{riv.losses}</b>
-                  </div>
-                  <div className="h2h-stat">
-                    <span>GOLS</span>
-                    <b>{riv.gf}:{riv.ga}</b>
-                  </div>
-                </div>
+                {admin && (
+                  <button
+                    className="button"
+                    disabled={!id || busy === id}
+                    onClick={() => void create(x)}
+                  >
+                    {busy === id ? 'Coletando…' : 'Criar dossiê'}
+                  </button>
+                )}
               </div>
             );
           })}
-        </div>
-      </div>
-
-      {/* MODAL PARA ADICIONAR NOVO RELATÓRIO POR ID */}
-      {isCreating && (
-        <div className="modal-backdrop">
-          <div className="modal" role="dialog">
-            <header>
-              <h2>Novo Relatório de Scouting</h2>
-              <button className="icon-button" onClick={() => setIsCreating(false)}>
-                ✕
-              </button>
-            </header>
-            <div className="data-form">
-              <label>
-                Nome do Adversário (Opcional)
-                <input
-                  value={formName}
-                  onChange={(e) => setFormName(e.target.value)}
-                  placeholder="Ex: Ressaca ES"
-                />
-              </label>
-              <label>
-                ID Oficial do Clube na EA (Obrigatório)
-                <input
-                  value={formClubId}
-                  onChange={(e) => setFormClubId(e.target.value)}
-                  placeholder="Ex: 184419"
-                  required
-                />
-              </label>
-              {err && <p className="error-text">{err}</p>}
-              <div className="actions">
-                <button className="button primary" disabled={busy} onClick={handleCreate}>
-                  {busy ? 'Buscando dados na EA…' : 'Criar Relatório'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+        </section>
       )}
-
-      {/* MODAL PARA DIRETORIA DEFINIR LOGO DO ADVERSÁRIO */}
-      {editingLogoOpponent && (
-        <div className="modal-backdrop">
-          <div className="modal" role="dialog">
-            <header>
-              <h2>Escudo do Adversário • {editingLogoOpponent}</h2>
-              <button className="icon-button" onClick={() => setEditingLogoOpponent(null)}>
-                ✕
+      <div className="overview-grid">
+        <aside className="panel">
+          <header>
+            <h2>Base de clubes</h2>
+            <span className="muted">{filtered.length}</span>
+          </header>
+          {filtered.length ? (
+            filtered.map((r) => (
+              <button
+                className={`match-row ${selected?.key === r.key ? 'active' : ''}`}
+                key={r.key}
+                onClick={() => setSelectedKey(r.key)}
+              >
+                <span className="player-avatar">
+                  {r.name.slice(0, 2).toUpperCase()}
+                </span>
+                <span className="match-opponent">
+                  <b>{r.name}</b>
+                  <small>
+                    {r.report
+                      ? 'Dossiê EA disponível'
+                      : `${r.games} confronto(s) conosco`}
+                  </small>
+                </span>
+                <ChevronRight size={16} />
               </button>
-            </header>
-            <div className="data-form">
-              <label>
-                URL HTTPS da Imagem do Escudo / Logo
-                <input
-                  type="url"
-                  value={logoInput}
-                  onChange={(e) => setLogoInput(e.target.value)}
-                  placeholder="https://exemplo.com/escudo.png"
-                  required
-                />
-                <small>Insira o link direto de uma imagem PNG ou JPEG na internet.</small>
-              </label>
-
-              <div className="actions">
-                <button className="button primary" disabled={busy} onClick={handleSaveLogo}>
-                  {busy ? 'Salvando…' : 'Salvar Escudo'}
-                </button>
-              </div>
+            ))
+          ) : (
+            <div className="empty">
+              <Search size={24} />
+              <h3>Nenhum clube encontrado</h3>
+              <p>Refine a busca ou sincronize amistosos.</p>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL DE DETALHES DO RELATÓRIO DE SCOUT */}
-      {modalReport && (
-        <div className="modal-backdrop">
-          <div className="modal wide" role="dialog">
-            <header>
-              <h2>Dossiê Tático • {modalReport.data.name}</h2>
-              <button className="icon-button" onClick={() => setModalReport(null)}>
-                ✕
-              </button>
-            </header>
-
-            <div className="scout-dossier-body">
-              <p className="scout-dossier-summary">{modalReport.data.summary}</p>
-
-              {modalReport.data.aiAnalysis && (
-                <div className="ai-analysis-pro">
-                  <div className="ai-header">
-                    <Sparkles size={16} />
-                    <b>Análise Tática Assistida por Inteligência Artificial</b>
-                  </div>
-                  <p>{modalReport.data.aiAnalysis}</p>
+          )}
+        </aside>
+        <section className="panel">
+          {selected ? (
+            <>
+              <header>
+                <div>
+                  <h2>{selected.name}</h2>
+                  <small>
+                    {selected.clubId
+                      ? `ID EA ${selected.clubId}`
+                      : 'Identificado no histórico de amistosos'}
+                  </small>
+                </div>
+                {admin && selected.report && (
+                  <button
+                    className="icon-button"
+                    aria-label={`Excluir dossiê de ${selected.name}`}
+                    onClick={() => void onRemoveRecord(selected.report!)}
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                )}
+              </header>
+              <div className="metrics">
+                <div className="metric">
+                  <span>Amostra</span>
+                  <strong>{dossier.length}</strong>
+                  <small>amistosos</small>
+                </div>
+                <div className="metric">
+                  <span>Gols na amostra</span>
+                  <strong>
+                    {dossier.reduce((n, m) => n + m.goalsFor, 0)} :{' '}
+                    {dossier.reduce((n, m) => n + m.goalsAgainst, 0)}
+                  </strong>
+                  <small>marcados : sofridos</small>
+                </div>
+                <div className="metric">
+                  <span>Cobertura individual</span>
+                  <strong>
+                    {lines ? Math.round((rated / lines) * 100) : 0}%
+                  </strong>
+                  <small>
+                    {rated} de {lines} atuações com nota
+                  </small>
+                </div>
+              </div>
+              {selected.matches.length > 0 && (
+                <div className="form-strip">
+                  <span>CONTRA NÓS</span>
+                  <b>{selected.wins}V</b>
+                  <b>{selected.draws}E</b>
+                  <b>{selected.losses}D</b>
+                  <small>
+                    {selected.gf}:{selected.ga} no agregado
+                  </small>
                 </div>
               )}
-
-              {admin && !modalReport.data.aiAnalysis && (
-                <button
-                  className="button"
-                  onClick={async () => {
-                    setBusy(true);
-                    try {
-                      await onAnalyze(modalReport.id);
-                      setModalReport(null);
-                    } finally {
-                      setBusy(false);
-                    }
-                  }}
-                >
-                  <Sparkles size={15} /> Gerar Análise Tática com IA
-                </button>
-              )}
-
-              {modalReport.data.matches && (
-                <div className="scout-recent-matches">
-                  <h4>Últimas Partidas Registradas do Adversário</h4>
-                  {modalReport.data.matches.map((m: Match) => (
-                    <div key={m.id} className="list-row">
-                      <span>{dateFormatted(m.playedAt)}</span>
-                      <b>vs {m.opponent}</b>
-                      <strong>
-                        {m.goalsFor} × {m.goalsAgainst}
-                      </strong>
+              {selected.report?.data.aiAnalysis &&
+                selected.report.data.aiScope === 'friendlyMatch' && (
+                  <div className="ai-analysis-pro">
+                    <div className="ai-header">
+                      <Shield size={16} />
+                      <b>Leitura assistida desta amostra</b>
                     </div>
-                  ))}
+                    <p>{selected.report.data.aiAnalysis}</p>
+                  </div>
+                )}
+              {admin &&
+                selected.report &&
+                (!selected.report.data.aiAnalysis ||
+                  selected.report.data.aiScope !== 'friendlyMatch') && (
+                  <button
+                    className="button"
+                    disabled={busy === 'ai'}
+                    onClick={async () => {
+                      setBusy('ai');
+                      try {
+                        await onAnalyze(selected.report!.id);
+                      } finally {
+                        setBusy('');
+                      }
+                    }}
+                  >
+                    {busy === 'ai' ? 'Analisando…' : 'Gerar leitura assistida'}
+                  </button>
+                )}
+              <div className="section-title-bar">
+                <div>
+                  <h3>Jogadores identificados</h3>
+                  <p>Somente dados fornecidos nos amistosos da amostra.</p>
+                </div>
+              </div>
+              {players.length ? (
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Jogador</th>
+                        <th>Posição</th>
+                        <th>Jogos</th>
+                        <th>Gols</th>
+                        <th>Assist.</th>
+                        <th>Nota média</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {players.slice(0, 20).map((p) => (
+                        <tr key={p.id}>
+                          <td>
+                            <b>{p.name}</b>
+                          </td>
+                          <td>{p.position || '—'}</td>
+                          <td>{p.games}</td>
+                          <td>{p.goals}</td>
+                          <td>{p.assists}</td>
+                          <td>
+                            {p.ratings
+                              ? (p.sum / p.ratings).toLocaleString('pt-BR', {
+                                  maximumFractionDigits: 1,
+                                })
+                              : 'Sem dado'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="empty">
+                  <Users size={24} />
+                  <h3>Sem dados individuais</h3>
+                  <p>A fonte não forneceu jogadores nesta amostra.</p>
                 </div>
               )}
+              <div className="section-title-bar">
+                <div>
+                  <h3>Últimos amistosos</h3>
+                  <p>
+                    Somente amistosos da fonte, sem inferir formação ou
+                    movimentação.
+                  </p>
+                </div>
+              </div>
+              {dossier.slice(0, 10).map((m) => (
+                <div className="list-row" key={m.id}>
+                  <span>{date(m.playedAt)}</span>
+                  <b>vs {m.opponent}</b>
+                  <strong>
+                    {m.goalsFor} × {m.goalsAgainst}
+                  </strong>
+                </div>
+              ))}
+            </>
+          ) : (
+            <div className="empty">
+              <Shield size={24} />
+              <h3>Selecione um clube</h3>
+              <p>O dossiê aparecerá aqui.</p>
             </div>
-          </div>
-        </div>
-      )}
+          )}
+        </section>
+      </div>
     </div>
   );
 }

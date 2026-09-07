@@ -13,6 +13,7 @@ check((await call('dtr','data',undefined,dtrViewer)).status,200,'DTR viewer read
 check((await call('vortex','data',undefined,dtrViewer)).status,401,'DTR cookie cannot read Vortex');
 check((await call('dtr','data',undefined,vortexViewer)).status,401,'Vortex cookie cannot read DTR');
 check((await call('dtr','record',{kind:'note',data:{name:'blocked'}},dtrViewer)).status,403,'viewer cannot write');
+check((await call('dtr','sync',{},dtrViewer)).status,403,'viewer cannot trigger external synchronization');
 check((await call('dtr','login',{password:keys.DTR_ADMIN},undefined,'https://untrusted.test')).status,403,'cross-origin login denied');
 const dtrAdmin=await call('dtr','login',{password:keys.DTR_ADMIN});check(dtrAdmin.status,200,'correct administrative password');
 const vortexAdmin=await call('vortex','login',{password:keys.VORTEX_ADMIN});check(vortexAdmin.status,200,'separate Vortex administrative password');
@@ -20,6 +21,7 @@ check((await call('vortex','record',{kind:'note',data:{name:'blocked'}},dtrAdmin
 const id='test-isolation-'+crypto.randomUUID();
 try{
  check((await call('dtr','record',{id,kind:'note',data:{name:'DTR sentinel'}},dtrAdmin.cookie)).status,200,'DTR creates persistent record');
+ check((await call('dtr','record',{id,kind:'event',data:{name:'wrong kind',date:new Date().toISOString()}},dtrAdmin.cookie)).status,409,'record ID cannot silently change category');
  check((await call('vortex','record',{id,kind:'note',data:{name:'Vortex sentinel'}},vortexAdmin.cookie)).status,200,'same record ID isolated across teams');
  const a=(await call('dtr','data',undefined,dtrViewer)).body;const b=(await call('vortex','data',undefined,vortexViewer)).body;
  check(a.records.find(r=>r.id===id).data.name,'DTR sentinel','DTR record remains independent');
