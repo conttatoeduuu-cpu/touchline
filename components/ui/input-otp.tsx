@@ -1,5 +1,7 @@
 'use client';
 
+/* oxlint-disable jsx-a11y/prefer-tag-over-role -- A decorative separator must remain a div inside the OTP flex layout. */
+
 import * as React from 'react';
 import { OTPInput, OTPInputContext } from 'input-otp';
 

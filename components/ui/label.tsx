@@ -1,5 +1,7 @@
 'use client';
 
+/* oxlint-disable jsx-a11y/label-has-associated-control -- Association is provided by htmlFor or wrapped children at each call site. */
+
 import * as React from 'react';
 
 import { cn } from '@/lib/utils';

@@ -1,5 +1,7 @@
 'use client';
 
+/* oxlint-disable jsx-a11y/prefer-tag-over-role -- FieldGroup is a styling primitive; changing its element would break its public prop API. */
+
 import { useMemo } from 'react';
 import { cva, type VariantProps } from 'class-variance-authority';
 

@@ -1,5 +1,7 @@
 import * as React from 'react';
 
+/* oxlint-disable jsx-a11y/anchor-has-content -- Content is supplied by Base UI's render composition. */
+
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import {

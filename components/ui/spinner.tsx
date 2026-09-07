@@ -1,4 +1,5 @@
 import { cn } from '@/lib/utils';
+/* oxlint-disable jsx-a11y/prefer-tag-over-role -- SVG status preserves the component's SVG prop API. */
 import { Loader2Icon } from 'lucide-react';
 
 function Spinner({ className, ...props }: React.ComponentProps<'svg'>) {

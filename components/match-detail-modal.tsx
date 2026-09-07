@@ -47,6 +47,8 @@ interface Props {
   brand: { name: string; short: string; accent: string; logo: string };
   settings: any;
   admin: boolean;
+  opponentLogo?: string;
+  onSaveOpponentLogo?: (opponentName: string, logoUrl: string) => Promise<void>;
   onClose: () => void;
   onEdit?: (m: Match) => void;
   onSaveImage: (kind: string, m: Match) => void;
@@ -60,6 +62,8 @@ export function MatchDetailModal({
   brand,
   settings,
   admin,
+  opponentLogo,
+  onSaveOpponentLogo,
   onClose,
   onEdit,
   onSaveImage,
@@ -207,8 +211,43 @@ export function MatchDetailModal({
               <h3>{opponentRealName}</h3>
               <span className="team-subtag">{opponentShort} · ADVERSÁRIO</span>
             </div>
-            <div className="team-crest-box opp-crest">
-              <span>{opponentRealName.slice(0, 2).toUpperCase()}</span>
+            <div className="team-crest-box opp-crest" style={{ position: 'relative' }}>
+              {opponentLogo ? (
+                <img src={opponentLogo} alt={opponentRealName} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+              ) : (
+                <span>{opponentRealName.slice(0, 2).toUpperCase()}</span>
+              )}
+              {admin && onSaveOpponentLogo && (
+                <button
+                  type="button"
+                  title="Definir escudo do adversário"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const url = window.prompt(`URL HTTPS do escudo para ${opponentRealName}:`, opponentLogo || '');
+                    if (url && url.startsWith('http')) {
+                      void onSaveOpponentLogo(opponentRealName, url);
+                    }
+                  }}
+                  style={{
+                    position: 'absolute',
+                    bottom: -6,
+                    right: -6,
+                    background: '#1a1f1b',
+                    border: '1px solid var(--accent, #10b981)',
+                    borderRadius: '50%',
+                    width: 22,
+                    height: 22,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: 11,
+                    cursor: 'pointer',
+                    color: '#fff',
+                  }}
+                >
+                  ✎
+                </button>
+              )}
             </div>
           </div>
         </div>

@@ -1,4 +1,5 @@
 import { mergeProps } from '@base-ui/react/merge-props';
+/* oxlint-disable jsx-a11y/prefer-tag-over-role -- Polymorphic group cannot be a fieldset without changing its public DOM contract. */
 import { useRender } from '@base-ui/react/use-render';
 import { cva, type VariantProps } from 'class-variance-authority';
 

@@ -1,4 +1,5 @@
 import * as React from 'react';
+/* oxlint-disable jsx-a11y/prefer-tag-over-role -- The polymorphic list container preserves the existing div prop API. */
 import { mergeProps } from '@base-ui/react/merge-props';
 import { useRender } from '@base-ui/react/use-render';
 import { cva, type VariantProps } from 'class-variance-authority';

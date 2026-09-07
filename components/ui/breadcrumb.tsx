@@ -1,4 +1,5 @@
 import * as React from 'react';
+/* oxlint-disable jsx-a11y/prefer-tag-over-role -- The current breadcrumb is intentionally non-navigable. */
 import { mergeProps } from '@base-ui/react/merge-props';
 import { useRender } from '@base-ui/react/use-render';
 

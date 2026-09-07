@@ -1,5 +1,7 @@
 'use client';
 
+/* oxlint-disable jsx-a11y/prefer-tag-over-role -- ARIA carousel roles require the existing generic containers and roledescription metadata. */
+
 import * as React from 'react';
 import useEmblaCarousel, {
   type UseEmblaCarouselType,
@@ -88,6 +90,7 @@ function Carousel({
     [scrollPrev, scrollNext],
   );
 
+  /* oxlint-disable react/react-compiler -- Embla exposes initial selection only after its imperative API is initialized. */
   React.useEffect(() => {
     if (!api || !setApi) return;
     setApi(api);
@@ -103,6 +106,7 @@ function Carousel({
       api?.off('select', onSelect);
     };
   }, [api, onSelect]);
+  /* oxlint-enable react/react-compiler */
 
   return (
     <CarouselContext.Provider
